@@ -1,0 +1,167 @@
+{
+  "project_name": "App Illustrations LMB",
+  "version": "1.0.0",
+  "design_philosophy": {
+    "identity": "E1 - Professional & Sober Variant",
+    "core_principles": [
+      "Clarity over Decoration: Internal tools must be frictionless.",
+      "Workflow-First: The UI guides the user through the 3-step linear process.",
+      "Data Density with Breathing Room: High density for image grids, but generous margins for containers.",
+      "Feedback is Key: Every action (upload, generate, select) has immediate visual feedback."
+    ],
+    "anti_patterns": [
+      "No Dark Mode (Strict Light Mode)",
+      "No generic 'Inter' for Headings",
+      "No full-screen gradients (Use discrete accents)",
+      "No hidden actions - all primary workflow buttons must be visible"
+    ]
+  },
+  "typography": {
+    "font_family": {
+      "headings": "Manrope, sans-serif",
+      "body": "Inter, sans-serif",
+      "mono": "JetBrains Mono, monospace"
+    },
+    "scale": {
+      "h1": "text-3xl font-bold tracking-tight text-secondary",
+      "h2": "text-2xl font-semibold tracking-tight text-gray-900",
+      "h3": "text-xl font-medium text-gray-800",
+      "body": "text-base font-normal leading-relaxed text-gray-600",
+      "small": "text-sm font-medium text-gray-500"
+    },
+    "weights": {
+      "regular": 400,
+      "medium": 500,
+      "semibold": 600,
+      "bold": 700
+    }
+  },
+  "colors": {
+    "palette": {
+      "primary": {
+        "DEFAULT": "#3B9FE8",
+        "foreground": "#FFFFFF",
+        "hover": "#2563EB"
+      },
+      "secondary": {
+        "DEFAULT": "#3B1FA8",
+        "foreground": "#FFFFFF"
+      },
+      "accent": {
+        "DEFAULT": "#10B981",
+        "foreground": "#FFFFFF",
+        "subtle": "#D1FAE5"
+      },
+      "background": {
+        "DEFAULT": "#F8FAFC",
+        "paper": "#FFFFFF"
+      },
+      "text": {
+        "primary": "#0F172A",
+        "secondary": "#64748B",
+        "muted": "#94A3B8"
+      },
+      "border": {
+        "DEFAULT": "#E2E8F0",
+        "focus": "#3B9FE8"
+      }
+    },
+    "semantic": {
+      "success": "#10B981",
+      "warning": "#F59E0B",
+      "error": "#EF4444",
+      "info": "#3B9FE8"
+    }
+  },
+  "layout": {
+    "container": {
+      "max_width": "max-w-7xl",
+      "padding": "px-4 sm:px-6 lg:px-8",
+      "center": "mx-auto"
+    },
+    "spacing": {
+      "section_gap": "gap-8",
+      "element_gap": "gap-4",
+      "card_padding": "p-6"
+    },
+    "grids": {
+      "gallery_dense": "grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-4",
+      "gallery_relaxed": "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6",
+      "dashboard": "grid grid-cols-12 gap-6"
+    }
+  },
+  "components": {
+    "buttons": {
+      "primary": "bg-primary text-white hover:bg-primary/90 shadow-sm rounded-md px-4 py-2 transition-all",
+      "secondary": "bg-secondary text-white hover:bg-secondary/90 shadow-sm rounded-md px-4 py-2 transition-all",
+      "outline": "border border-input bg-background hover:bg-accent hover:text-accent-foreground rounded-md px-4 py-2 transition-all",
+      "ghost": "hover:bg-accent hover:text-accent-foreground rounded-md px-4 py-2 transition-all"
+    },
+    "cards": {
+      "base": "bg-white rounded-lg border border-border shadow-sm hover:shadow-md transition-shadow",
+      "interactive": "cursor-pointer ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+    },
+    "inputs": {
+      "base": "flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+    },
+    "stepper": {
+      "container": "flex items-center justify-between w-full max-w-3xl mx-auto mb-8",
+      "step_active": "bg-primary text-white border-primary",
+      "step_completed": "bg-green-500 text-white border-green-500",
+      "step_inactive": "bg-white text-gray-400 border-gray-200"
+    }
+  },
+  "visual_enhancers": {
+    "shadows": {
+      "sm": "0 1px 2px 0 rgb(0 0 0 / 0.05)",
+      "md": "0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1)",
+      "lg": "0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1)"
+    },
+    "borders": {
+      "radius": "rounded-lg",
+      "width": "border"
+    },
+    "animations": {
+      "hover_lift": "hover:-translate-y-1 transition-transform duration-200",
+      "fade_in": "animate-in fade-in duration-500"
+    }
+  },
+  "image_urls": {
+    "placeholders": {
+      "3d_icon": "https://images.unsplash.com/photo-1633412802994-5c058f151b66?auto=format&fit=crop&q=80&w=1024",
+      "illustration_editorial": "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&q=80&w=1792"
+    },
+    "logo": {
+      "fallback_text": "Artyplanet",
+      "icon": "orbit" 
+    }
+  },
+  "motion": {
+    "reduced_motion": "motion-reduce:transition-none motion-reduce:animate-none",
+    "standard_transition": "transition-all duration-200 ease-in-out"
+  },
+  "accessibility": {
+    "contrast_check": "Ensure text-blue-500 is not used on white background for body text. Use text-blue-600 or darker.",
+    "focus_states": "All interactive elements must have visible focus rings.",
+    "aria_labels": "Icon-only buttons must have aria-label."
+  },
+  "universal_guidelines": [
+    "Do not use gradients for backgrounds. Keep it clean white/gray.",
+    "Use 'Manrope' for all Headings (H1-H3). Use 'Inter' for body text.",
+    "Buttons should be prominent but not massive. Use 'h-10 px-4 py-2' as standard.",
+    "Feedback: Show loading spinners for all async actions (OCR, Generation).",
+    "Workflow: Use a Step Wizard approach. Don't show everything at once.",
+    "Logo: Display 'Artyplanet' in the top left. Icon Blue (#3B9FE8), Text Violet (#3B1FA8).",
+    "Data-TestID: Add data-testid to all inputs and buttons."
+  ],
+  "instructions_to_main_agent": [
+    "Implement a 3-step workflow using a Stepper component.",
+    "Step 1: File Upload (Drag & Drop) -> Display Extracted Title (Simulated OCR) -> Editable Input.",
+    "Step 2: Show 10 placeholder 3D icons (Grid). Allow selecting exactly 2. Button 'Generate High Res'.",
+    "Step 3: Show 4 placeholder editorial illustrations (Grid). Allow selecting exactly 1. Button 'Finalize'.",
+    "Session Management: Save state to localStorage or a simple backend mock.",
+    "Export: Simulate ZIP download.",
+    "Use Shadcn UI components for consistency.",
+    "Ensure the UI is in French as requested."
+  ]
+}
