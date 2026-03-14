@@ -20,6 +20,7 @@ export default function StepImport({ onComplete }) {
     const entries = valid.map(f => ({
       file: f,
       name: f.name,
+      preview: URL.createObjectURL(f),
       status: "pending",
       titre: "",
       error: "",
@@ -39,6 +40,8 @@ export default function StepImport({ onComplete }) {
   };
 
   const removeFile = (index) => {
+    const f = files[index];
+    if (f.preview) URL.revokeObjectURL(f.preview);
     setFiles(prev => prev.filter((_, i) => i !== index));
   };
 
@@ -133,6 +136,17 @@ export default function StepImport({ onComplete }) {
               className="bg-white border border-gray-200 rounded-lg px-4 py-3 flex items-center gap-3"
               data-testid={`file-item-${i}`}
             >
+              {/* Thumbnail */}
+              <div className="flex-shrink-0 w-14 h-14 rounded-md overflow-hidden bg-gray-100 border border-gray-200">
+                <img
+                  src={f.preview}
+                  alt={f.name}
+                  className="w-full h-full object-cover"
+                  data-testid={`thumbnail-${i}`}
+                />
+              </div>
+
+              {/* Status icon */}
               <div className="flex-shrink-0">
                 {f.status === "loading" && <Loader2 className="w-4 h-4 spin text-[#3B9FE8]" />}
                 {f.status === "done" && <CheckCircle className="w-4 h-4 text-green-500" />}

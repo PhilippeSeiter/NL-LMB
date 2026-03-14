@@ -73,6 +73,7 @@ GET    /api/sessions/{id}/export  → Export ZIP
 ## Backlog P1/P2
 
 ### P1 (prochaine itération)
+- [x] Aperçu thumbnail des images importées dans StepImport (2026-02-xx)
 - [ ] Test du workflow OCR complet avec vraies images
 - [ ] Test de génération pictos + illustrations end-to-end
 - [ ] Navigation "article précédent" dans les étapes Pictos/Illustrations
