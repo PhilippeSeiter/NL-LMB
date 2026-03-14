@@ -1,72 +1,354 @@
-from fastapi import FastAPI, APIRouter
+from fastapi import FastAPI, APIRouter, UploadFile, File, HTTPException
+from fastapi.responses import StreamingResponse
+from fastapi.concurrency import run_in_threadpool
 from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
+from pydantic import BaseModel, Field
+from typing import List, Optional
 import os
 import logging
-from pathlib import Path
-from pydantic import BaseModel, Field, ConfigDict
-from typing import List
 import uuid
+import base64
+import io
+import zipfile
+import re
+import requests as req_lib
 from datetime import datetime, timezone
-
+from pathlib import Path
+from emergentintegrations.llm.chat import LlmChat, UserMessage, ImageContent
+import fal_client
 
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
 
-# MongoDB connection
+OPENAI_API_KEY = os.environ.get('OPENAI_API_KEY', '')
+FAL_KEY = os.environ.get('FAL_KEY', '')
+FLUX_MODEL = os.environ.get('FLUX_MODEL', 'fal-ai/flux/dev')
+
+os.environ["FAL_KEY"] = FAL_KEY
+
 mongo_url = os.environ['MONGO_URL']
-client = AsyncIOMotorClient(mongo_url)
-db = client[os.environ['DB_NAME']]
+db_client = AsyncIOMotorClient(mongo_url)
+db = db_client[os.environ['DB_NAME']]
 
-# Create the main app without a prefix
 app = FastAPI()
-
-# Create a router with the /api prefix
 api_router = APIRouter(prefix="/api")
 
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+logger = logging.getLogger(__name__)
 
-# Define Models
-class StatusCheck(BaseModel):
-    model_config = ConfigDict(extra="ignore")  # Ignore MongoDB's _id field
-    
+
+# --- Models ---
+
+class PictoState(BaseModel):
+    propositions: List[str] = []
+    selections: List[int] = []
+    images: List[str] = []
+    valide: bool = False
+    nom_fichiers: List[str] = []
+
+
+class IllustrationState(BaseModel):
+    propositions: List[str] = []
+    selection: int = -1
+    image: str = ""
+    valide: bool = False
+    nom_fichier: str = ""
+
+
+class Article(BaseModel):
+    index: int
+    titre: str
+    picto: PictoState = Field(default_factory=PictoState)
+    illustration: IllustrationState = Field(default_factory=IllustrationState)
+
+
+class Session(BaseModel):
     id: str = Field(default_factory=lambda: str(uuid.uuid4()))
-    client_name: str
-    timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    titre: str
+    date_creation: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
+    statut: str = "en_cours"
+    articles: List[Article] = []
 
-class StatusCheckCreate(BaseModel):
-    client_name: str
 
-# Add your routes to the router instead of directly to app
+class SessionCreate(BaseModel):
+    titre: str
+    articles: List[dict] = []
+
+
+# --- Helpers ---
+
+SYSTEM_PICTOS = (
+    "Tu es un directeur artistique + icon designer pour Les Maîtres Bâtisseurs (LMB). "
+    "À partir d'un titre d'article, tu proposes 10 idées numérotées de pictogrammes 3D pour illustrer ce titre. "
+    "Chaque idée est décrite en 1 ligne (ce qu'on voit dans l'image). "
+    "Tu termines par : \"Tu choisis quels numéros ?\" "
+    "Règles : objets 3D glossy premium, fond blanc, format carré 1:1, zéro texte lisible, lisible en petit, style emoji 3D premium sérieux."
+)
+
+SYSTEM_ILLUSTRATIONS = (
+    "Tu es un directeur artistique pour Les Maîtres Bâtisseurs (LMB). "
+    "À partir d'un titre d'article, tu proposes 4 idées numérotées d'illustrations éditoriales 16/9. "
+    "Chaque idée décrit concrètement ce qu'on verrait dans l'image. "
+    "Style : scrapbook / textures / collage éditorial moderne, premium, lisible, expressif. "
+    "Zéro texte lisible dans l'image. Tu termines par : \"Tu choisis quel numéro ?\""
+)
+
+
+def parse_numbered_list(text: str, max_items: int = 10) -> List[str]:
+    lines = text.strip().split('\n')
+    results = []
+    for line in lines:
+        line = line.strip()
+        match = re.match(r'^(\d+)[.):\-\s]+(.+)', line)
+        if match:
+            item = match.group(2).strip()
+            item = re.sub(r'\*\*(.+?)\*\*', r'\1', item)
+            if item:
+                results.append(item)
+    return results[:max_items]
+
+
+# --- Session Routes ---
+
+@api_router.get("/sessions")
+async def get_sessions():
+    sessions = await db.sessions.find({}, {"_id": 0}).sort("date_creation", -1).to_list(1000)
+    return sessions
+
+
+@api_router.post("/sessions")
+async def create_session(data: SessionCreate):
+    articles = []
+    for a in data.articles:
+        art = Article(
+            index=a.get("index", 1),
+            titre=a.get("titre", ""),
+        )
+        articles.append(art)
+    session = Session(titre=data.titre, articles=articles)
+    doc = session.model_dump()
+    await db.sessions.insert_one(doc)
+    return session.model_dump()
+
+
+@api_router.get("/sessions/{session_id}")
+async def get_session(session_id: str):
+    session = await db.sessions.find_one({"id": session_id}, {"_id": 0})
+    if not session:
+        raise HTTPException(status_code=404, detail="Session non trouvée")
+    return session
+
+
+@api_router.put("/sessions/{session_id}")
+async def update_session(session_id: str, updates: dict):
+    updates.pop("_id", None)
+    await db.sessions.update_one({"id": session_id}, {"$set": updates})
+    updated = await db.sessions.find_one({"id": session_id}, {"_id": 0})
+    return updated
+
+
+@api_router.delete("/sessions/{session_id}")
+async def delete_session(session_id: str):
+    await db.sessions.delete_one({"id": session_id})
+    return {"message": "Session supprimée"}
+
+
+# --- OCR ---
+
+@api_router.post("/ocr")
+async def ocr_image(file: UploadFile = File(...)):
+    content = await file.read()
+
+    try:
+        from PIL import Image as PILImage
+        img = PILImage.open(io.BytesIO(content))
+        max_size = 1200
+        if max(img.size) > max_size:
+            img.thumbnail((max_size, max_size), PILImage.LANCZOS)
+        if img.mode in ('RGBA', 'P'):
+            img = img.convert('RGB')
+        buffer = io.BytesIO()
+        img.save(buffer, format='JPEG', quality=85)
+        content = buffer.getvalue()
+    except Exception as e:
+        logger.warning(f"Image resize skipped: {e}")
+
+    base64_image = base64.b64encode(content).decode("utf-8")
+
+    chat = LlmChat(
+        api_key=OPENAI_API_KEY,
+        session_id=f"ocr-{uuid.uuid4()}",
+        system_message=(
+            "Tu es un assistant d'extraction de texte. "
+            "Tu reçois une image d'article de newsletter. "
+            "Extrais uniquement le titre principal de l'article visible dans cette image. "
+            "Réponds avec le titre uniquement, sans ponctuation ni explication supplémentaire."
+        )
+    ).with_model("openai", "gpt-4o-mini")
+
+    image_content = ImageContent(image_base64=base64_image)
+    user_message = UserMessage(
+        text="Extrais le titre principal de cet article. Réponds avec le titre uniquement.",
+        file_contents=[image_content]
+    )
+
+    titre = await chat.send_message(user_message)
+    return {"titre": titre.strip()}
+
+
+# --- Propositions ---
+
+@api_router.post("/propositions/pictos")
+async def get_picto_propositions(data: dict):
+    titre = data.get("titre", "")
+    chat = LlmChat(
+        api_key=OPENAI_API_KEY,
+        session_id=f"pictos-{uuid.uuid4()}",
+        system_message=SYSTEM_PICTOS
+    ).with_model("openai", "gpt-4o-mini")
+
+    response = await chat.send_message(UserMessage(text=f"Titre de l'article : {titre}"))
+    propositions = parse_numbered_list(response, max_items=10)
+    return {"propositions": propositions, "raw": response}
+
+
+@api_router.post("/propositions/illustrations")
+async def get_illustration_propositions(data: dict):
+    titre = data.get("titre", "")
+    chat = LlmChat(
+        api_key=OPENAI_API_KEY,
+        session_id=f"illus-{uuid.uuid4()}",
+        system_message=SYSTEM_ILLUSTRATIONS
+    ).with_model("openai", "gpt-4o-mini")
+
+    response = await chat.send_message(UserMessage(text=f"Titre de l'article : {titre}"))
+    propositions = parse_numbered_list(response, max_items=4)
+    return {"propositions": propositions, "raw": response}
+
+
+# --- Image Generation ---
+
+@api_router.post("/generate/picto")
+async def generate_picto(data: dict):
+    proposition = data.get("proposition", "")
+    article_index = data.get("article_index", 1)
+    picto_number = data.get("picto_number", 1)
+
+    date_str = datetime.now().strftime("%Y%m%d")
+    article_str = str(article_index).zfill(2)
+    nom_fichier = f"Picto_{picto_number}_Article{article_str}_LMB_{date_str}.png"
+
+    prompt = (
+        f"3D glossy premium icon on pure white background, square 1:1 format, no text, no letters, "
+        f"highly detailed, photorealistic 3D render, premium emoji-style: {proposition}. "
+        "Clean white background, professional."
+    )
+
+    handler = await fal_client.submit_async(
+        FLUX_MODEL,
+        arguments={
+            "prompt": prompt,
+            "image_size": "square_hd",
+            "num_inference_steps": 28,
+            "guidance_scale": 3.5,
+            "num_images": 1,
+        }
+    )
+    result = await handler.get()
+    image_url = result["images"][0]["url"]
+
+    return {"image_url": image_url, "nom_fichier": nom_fichier}
+
+
+@api_router.post("/generate/illustration")
+async def generate_illustration(data: dict):
+    proposition = data.get("proposition", "")
+    article_index = data.get("article_index", 1)
+
+    date_str = datetime.now().strftime("%Y%m%d")
+    article_str = str(article_index).zfill(2)
+    nom_fichier = f"Illustration_Article{article_str}_LMB_{date_str}.png"
+
+    prompt = (
+        f"Editorial illustration, 16:9 landscape format, scrapbook collage style, "
+        f"modern premium editorial, expressive, no text, no letters: {proposition}. "
+        "High quality magazine editorial, textured collage."
+    )
+
+    handler = await fal_client.submit_async(
+        FLUX_MODEL,
+        arguments={
+            "prompt": prompt,
+            "image_size": {"width": 1792, "height": 1024},
+            "num_inference_steps": 28,
+            "guidance_scale": 3.5,
+            "num_images": 1,
+        }
+    )
+    result = await handler.get()
+    image_url = result["images"][0]["url"]
+
+    return {"image_url": image_url, "nom_fichier": nom_fichier}
+
+
+# --- Export ZIP ---
+
+@api_router.get("/sessions/{session_id}/export")
+async def export_session_zip(session_id: str):
+    session = await db.sessions.find_one({"id": session_id}, {"_id": 0})
+    if not session:
+        raise HTTPException(status_code=404, detail="Session non trouvée")
+
+    zip_buffer = io.BytesIO()
+
+    def build_zip():
+        with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zf:
+            for article in session.get("articles", []):
+                picto = article.get("picto", {})
+                for img_url, nom in zip(picto.get("images", []), picto.get("nom_fichiers", [])):
+                    if img_url:
+                        try:
+                            resp = req_lib.get(img_url, timeout=30)
+                            if resp.status_code == 200:
+                                zf.writestr(nom, resp.content)
+                        except Exception as e:
+                            logger.error(f"Download error {img_url}: {e}")
+
+                illus = article.get("illustration", {})
+                img_url = illus.get("image", "")
+                nom = illus.get("nom_fichier", "")
+                if img_url and nom:
+                    try:
+                        resp = req_lib.get(img_url, timeout=30)
+                        if resp.status_code == 200:
+                            zf.writestr(nom, resp.content)
+                    except Exception as e:
+                        logger.error(f"Download error {img_url}: {e}")
+
+    await run_in_threadpool(build_zip)
+    zip_buffer.seek(0)
+
+    await db.sessions.update_one({"id": session_id}, {"$set": {"statut": "terminee"}})
+
+    titre_safe = re.sub(r'[^\w\-]', '_', session.get("titre", "session"))[:40]
+    return StreamingResponse(
+        iter([zip_buffer.getvalue()]),
+        media_type="application/zip",
+        headers={"Content-Disposition": f"attachment; filename={titre_safe}.zip"}
+    )
+
+
+# --- Health ---
+
 @api_router.get("/")
 async def root():
-    return {"message": "Hello World"}
+    return {"message": "LMB Illustrations API — OK"}
 
-@api_router.post("/status", response_model=StatusCheck)
-async def create_status_check(input: StatusCheckCreate):
-    status_dict = input.model_dump()
-    status_obj = StatusCheck(**status_dict)
-    
-    # Convert to dict and serialize datetime to ISO string for MongoDB
-    doc = status_obj.model_dump()
-    doc['timestamp'] = doc['timestamp'].isoformat()
-    
-    _ = await db.status_checks.insert_one(doc)
-    return status_obj
 
-@api_router.get("/status", response_model=List[StatusCheck])
-async def get_status_checks():
-    # Exclude MongoDB's _id field from the query results
-    status_checks = await db.status_checks.find({}, {"_id": 0}).to_list(1000)
-    
-    # Convert ISO string timestamps back to datetime objects
-    for check in status_checks:
-        if isinstance(check['timestamp'], str):
-            check['timestamp'] = datetime.fromisoformat(check['timestamp'])
-    
-    return status_checks
+# --- App setup ---
 
-# Include the router in the main app
 app.include_router(api_router)
 
 app.add_middleware(
@@ -77,13 +359,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Configure logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-)
-logger = logging.getLogger(__name__)
 
 @app.on_event("shutdown")
 async def shutdown_db_client():
-    client.close()
+    db_client.close()

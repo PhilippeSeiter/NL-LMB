@@ -1,34 +1,91 @@
-.App-logo {
-    height: 40vmin;
-    pointer-events: none;
+@import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Inter:wght@400;500;600&display=swap');
+
+.App {
+  font-family: 'Inter', sans-serif;
 }
 
-@media (prefers-reduced-motion: no-preference) {
-    .App-logo {
-        animation: App-logo-spin infinite 20s linear;
-    }
+h1, h2, h3, h4 {
+  font-family: 'Manrope', sans-serif;
 }
 
-.App-header {
-    background-color: #0f0f10;
-    min-height: 100vh;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    font-size: calc(10px + 2vmin);
-    color: white;
+.upload-zone {
+  border: 2px dashed #CBD5E1;
+  transition: border-color 0.2s, background-color 0.2s;
 }
 
-.App-link {
-    color: #61dafb;
+.upload-zone:hover,
+.upload-zone.drag-over {
+  border-color: #3B9FE8;
+  background-color: #EFF6FF;
 }
 
-@keyframes App-logo-spin {
-    from {
-        transform: rotate(0deg);
-    }
-    to {
-        transform: rotate(360deg);
-    }
+.proposal-item {
+  transition: background-color 0.15s, border-color 0.15s;
+}
+
+.proposal-item:hover {
+  background-color: #F1F5F9;
+}
+
+.proposal-item.selected {
+  background-color: #EFF6FF;
+  border-color: #3B9FE8;
+}
+
+.img-picto {
+  aspect-ratio: 1 / 1;
+  object-fit: contain;
+  background: #F8FAFC;
+}
+
+.img-illustration {
+  aspect-ratio: 16 / 9;
+  object-fit: cover;
+  background: #F8FAFC;
+}
+
+.step-badge {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: 'Manrope', sans-serif;
+  font-weight: 700;
+  font-size: 14px;
+  transition: all 0.3s;
+}
+
+.step-badge.active {
+  background-color: #3B9FE8;
+  color: white;
+}
+
+.step-badge.done {
+  background-color: #10B981;
+  color: white;
+}
+
+.step-badge.pending {
+  background-color: #E2E8F0;
+  color: #94A3B8;
+}
+
+.fade-in {
+  animation: fadeIn 0.3s ease-in-out;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.spin {
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
 }
