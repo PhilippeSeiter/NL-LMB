@@ -40,6 +40,8 @@ REFS_DIR.mkdir(parents=True, exist_ok=True)
 UPLOADS_DIR = ROOT_DIR / "static" / "uploads"
 UPLOADS_DIR.mkdir(parents=True, exist_ok=True)
 
+ILLUS_REFS_DIR = ROOT_DIR / "static" / "references" / "illustrations"
+
 app = FastAPI()
 app.mount("/api/static", StaticFiles(directory=str(ROOT_DIR / "static")), name="static")
 api_router = APIRouter(prefix="/api")
@@ -322,22 +324,56 @@ async def generate_illustration(data: dict):
     article_str = str(article_index).zfill(2)
     nom_fichier = f"Illustration_Article{article_str}_LMB_{date_str}.png"
 
-    prompt = (
-        f"Editorial illustration, 16:9 landscape format, scrapbook collage style, "
-        f"modern premium editorial, expressive, no text, no letters: {proposition}. "
-        "High quality magazine editorial, textured collage."
-    )
+    # Références de style locales (si disponibles)
+    illus_ref_files = ["illus1.png", "illus2.png", "illus3.png"]
+    illus_ref_urls = [
+        f"{BACKEND_URL}/api/static/references/illustrations/{f}"
+        for f in illus_ref_files
+        if (ILLUS_REFS_DIR / f).exists()
+    ]
 
-    handler = await fal_client.submit_async(
-        FLUX_MODEL,
-        arguments={
-            "prompt": prompt,
-            "image_size": {"width": 1792, "height": 1024},
-            "num_inference_steps": 28,
-            "guidance_scale": 3.5,
-            "num_images": 1,
-        }
-    )
+    if illus_ref_urls:
+        ref_tags = " ".join(f"@image{i+1}" for i in range(len(illus_ref_urls)))
+        prompt = (
+            f"Generate a new editorial illustration in the exact same visual style as {ref_tags}: "
+            f"{proposition}. "
+            "Same scrapbook collage style, same textures, same composition quality, "
+            "16:9 landscape format, no readable text."
+        )
+        handler = await fal_client.submit_async(
+            "fal-ai/flux-2/edit",
+            arguments={
+                "prompt": prompt,
+                "image_urls": illus_ref_urls,
+                "image_size": {"width": 1792, "height": 1024},
+                "num_inference_steps": 28,
+                "guidance_scale": 2.5,
+                "num_images": 1,
+                "output_format": "png",
+            }
+        )
+    else:
+        # Fallback sans références
+        prompt = (
+            f"Editorial illustration, 16:9 landscape format, scrapbook collage style, "
+            f"modern premium editorial, expressive, no text, no letters: {proposition}. "
+            "High quality magazine editorial, textured collage."
+        )
+        handler = await fal_client.submit_async(
+            FLUX_MODEL,
+            arguments={
+                "prompt": prompt,
+                "image_size": {"width": 1792, "height": 1024},
+                "num_inference_steps": 28,
+                "guidance_scale": 3.5,
+                "num_images": 1,
+            }
+        )
+
+    result = await handler.get()
+    image_url = result["images"][0]["url"]
+
+    return {"image_url": image_url, "nom_fichier": nom_fichier}
     result = await handler.get()
     image_url = result["images"][0]["url"]
 
