@@ -1,12 +1,16 @@
 import axios from "axios";
 import { Button } from "@/components/ui/button";
-import { Download, Image } from "lucide-react";
+import { Download, FileText, Image } from "lucide-react";
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 
 export default function SessionRecap({ session }) {
   const handleExport = () => {
     window.location.href = `${API}/sessions/${session.id}/export`;
+  };
+
+  const handleExportWord = () => {
+    window.location.href = `${API}/sessions/${session.id}/export-word`;
   };
 
   const pictoCount = session.articles.reduce(
@@ -115,7 +119,7 @@ export default function SessionRecap({ session }) {
       </div>
 
       {/* Export */}
-      <div className="flex justify-center pt-2 pb-6">
+      <div className="flex flex-wrap justify-center gap-3 pt-2 pb-6">
         <Button
           onClick={handleExport}
           className="h-12 px-10 text-base bg-[#3B9FE8] hover:bg-[#2563EB] text-white rounded-lg shadow-sm"
@@ -123,6 +127,15 @@ export default function SessionRecap({ session }) {
         >
           <Download className="w-5 h-5 mr-2" />
           Exporter le ZIP
+        </Button>
+        <Button
+          onClick={handleExportWord}
+          variant="outline"
+          className="h-12 px-10 text-base border-[#3B1FA8] text-[#3B1FA8] hover:bg-[#3B1FA8] hover:text-white rounded-lg shadow-sm"
+          data-testid="btn-export-word"
+        >
+          <FileText className="w-5 h-5 mr-2" />
+          Exporter Word
         </Button>
       </div>
     </div>
