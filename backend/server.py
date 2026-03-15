@@ -19,6 +19,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from emergentintegrations.llm.chat import LlmChat, UserMessage, ImageContent
 import fal_client
+from openai import AsyncOpenAI
 
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
@@ -29,6 +30,7 @@ FLUX_MODEL = os.environ.get('FLUX_MODEL', 'fal-ai/flux/dev')
 BACKEND_URL = os.environ.get('BACKEND_URL', '')
 
 os.environ["FAL_KEY"] = FAL_KEY
+openai_client = AsyncOpenAI(api_key=OPENAI_API_KEY)
 
 mongo_url = os.environ['MONGO_URL']
 db_client = AsyncIOMotorClient(mongo_url)
@@ -81,11 +83,13 @@ class Session(BaseModel):
     titre: str
     date_creation: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
     statut: str = "en_cours"
+    engine: str = "fal"
     articles: List[Article] = []
 
 
 class SessionCreate(BaseModel):
     titre: str
+    engine: str = "fal"
     articles: List[dict] = []
 
 
@@ -154,7 +158,7 @@ async def create_session(data: SessionCreate):
             original_file_key=a.get("original_file_key", ""),
         )
         articles.append(art)
-    session = Session(titre=data.titre, articles=articles)
+    session = Session(titre=data.titre, engine=data.engine, articles=articles)
     doc = session.model_dump()
     await db.sessions.insert_one(doc)
     return session.model_dump()
@@ -302,61 +306,84 @@ async def generate_picto(data: dict):
     proposition = data.get("proposition", "")
     article_index = data.get("article_index", 1)
     picto_number = data.get("picto_number", 1)
+    engine = data.get("engine", "fal")
 
     date_str = datetime.now().strftime("%Y%m%d")
     article_str = str(article_index).zfill(2)
     nom_fichier = f"Picto_{picto_number}_Article{article_str}_LMB_{date_str}.png"
 
-    # Références de style locales (si disponibles)
-    ref_files = ["picto3.png", "picto5.png", "picto6.png"]
-    ref_urls = [
-        f"{BACKEND_URL}/api/static/references/{f}"
-        for f in ref_files
-        if (REFS_DIR / f).exists()
-    ]
-
-    if ref_urls:
-        # fal-ai/flux-2/edit avec image_urls de référence de style
-        ref_tags = " ".join(f"@image{i+1}" for i in range(len(ref_urls)))
+    if engine == "openai":
         prompt = (
-            f"Generate a new premium 3D icon in the exact same visual style as {ref_tags}: "
-            f"{proposition}. "
-            "Same glossy 3D render, same soft studio lighting, same vivid colors, same premium quality. "
-            "Square format, centered object, no text, no letters."
+            f"A single premium 3D glossy icon for a newsletter article about: {proposition}. "
+            "Style: isolated 3D object with glossy surfaces, soft studio lighting, vivid saturated colors, "
+            "pure white background, centered composition, square 1:1 format, "
+            "professional premium icon design like a high-end emoji 3D render. "
+            "Absolutely no text, no letters, no numbers visible in the image."
         )
-        handler = await fal_client.submit_async(
-            "fal-ai/flux-2/edit",
-            arguments={
-                "prompt": prompt,
-                "image_urls": ref_urls,
-                "image_size": "square_hd",
-                "num_inference_steps": 28,
-                "guidance_scale": 2.5,
-                "num_images": 1,
-                "output_format": "png",
-            }
+        response = await openai_client.images.generate(
+            model="gpt-image-1",
+            prompt=prompt,
+            size="1024x1024",
+            quality="medium",
+            n=1,
         )
+        img_data = response.data[0]
+        if img_data.b64_json:
+            image_bytes = base64.b64decode(img_data.b64_json)
+        else:
+            image_bytes = req_lib.get(img_data.url, timeout=60).content
+        file_key = str(uuid.uuid4())
+        save_path = UPLOADS_DIR / f"{file_key}.png"
+        save_path.write_bytes(image_bytes)
+        image_url = f"{BACKEND_URL}/api/static/uploads/{file_key}.png"
     else:
-        # Fallback sans références (pictos pas encore uploadés)
-        prompt = (
-            f"A single premium 3D rendered icon, centered, square composition, "
-            f"pure white background, glossy 3D object, soft studio lighting, "
-            f"vivid colors, no text, no letters: {proposition}. "
-            "Photorealistic quality, smooth surfaces, professional icon design."
-        )
-        handler = await fal_client.submit_async(
-            FLUX_MODEL,
-            arguments={
-                "prompt": prompt,
-                "image_size": "square_hd",
-                "num_inference_steps": 28,
-                "guidance_scale": 3.5,
-                "num_images": 1,
-            }
-        )
+        # FAL.ai — comportement actuel
+        ref_files = ["picto3.png", "picto5.png", "picto6.png"]
+        ref_urls = [
+            f"{BACKEND_URL}/api/static/references/{f}"
+            for f in ref_files
+            if (REFS_DIR / f).exists()
+        ]
 
-    result = await handler.get()
-    image_url = result["images"][0]["url"]
+        if ref_urls:
+            ref_tags = " ".join(f"@image{i+1}" for i in range(len(ref_urls)))
+            prompt = (
+                f"Generate a new premium 3D icon in the exact same visual style as {ref_tags}: "
+                f"{proposition}. "
+                "Same glossy 3D render, same soft studio lighting, same vivid colors, same premium quality. "
+                "Square format, centered object, no text, no letters."
+            )
+            handler = await fal_client.submit_async(
+                "fal-ai/flux-2/edit",
+                arguments={
+                    "prompt": prompt,
+                    "image_urls": ref_urls,
+                    "image_size": "square_hd",
+                    "num_inference_steps": 28,
+                    "guidance_scale": 2.5,
+                    "num_images": 1,
+                    "output_format": "png",
+                }
+            )
+        else:
+            prompt = (
+                f"A single premium 3D rendered icon, centered, square composition, "
+                f"pure white background, glossy 3D object, soft studio lighting, "
+                f"vivid colors, no text, no letters: {proposition}. "
+                "Photorealistic quality, smooth surfaces, professional icon design."
+            )
+            handler = await fal_client.submit_async(
+                FLUX_MODEL,
+                arguments={
+                    "prompt": prompt,
+                    "image_size": "square_hd",
+                    "num_inference_steps": 28,
+                    "guidance_scale": 3.5,
+                    "num_images": 1,
+                }
+            )
+        result = await handler.get()
+        image_url = result["images"][0]["url"]
 
     return {"image_url": image_url, "nom_fichier": nom_fichier}
 
@@ -365,59 +392,83 @@ async def generate_picto(data: dict):
 async def generate_illustration(data: dict):
     proposition = data.get("proposition", "")
     article_index = data.get("article_index", 1)
+    engine = data.get("engine", "fal")
 
     date_str = datetime.now().strftime("%Y%m%d")
     article_str = str(article_index).zfill(2)
     nom_fichier = f"Illustration_Article{article_str}_LMB_{date_str}.png"
 
-    # Références de style locales (si disponibles)
-    illus_ref_files = ["illus1.png", "illus2.png", "illus3.png"]
-    illus_ref_urls = [
-        f"{BACKEND_URL}/api/static/references/illustrations/{f}"
-        for f in illus_ref_files
-        if (ILLUS_REFS_DIR / f).exists()
-    ]
-
-    if illus_ref_urls:
-        ref_tags = " ".join(f"@image{i+1}" for i in range(len(illus_ref_urls)))
+    if engine == "openai":
         prompt = (
-            f"Generate a new editorial illustration in the exact same visual style as {ref_tags}: "
-            f"{proposition}. "
-            "Same scrapbook collage style, same textures, same composition quality, "
-            "16:9 landscape format, no readable text."
+            f"An editorial illustration for a newsletter article about: {proposition}. "
+            "Style: scrapbook collage editorial, mix of photography fragments, geometric shapes, "
+            "paper textures, torn edges, modern magazine layout, expressive dynamic composition, "
+            "premium editorial quality, rich colors, layered visual storytelling. "
+            "16:9 landscape format. Absolutely no readable text, no letters visible."
         )
-        handler = await fal_client.submit_async(
-            "fal-ai/flux-2/edit",
-            arguments={
-                "prompt": prompt,
-                "image_urls": illus_ref_urls,
-                "image_size": {"width": 1792, "height": 1024},
-                "num_inference_steps": 28,
-                "guidance_scale": 2.5,
-                "num_images": 1,
-                "output_format": "png",
-            }
+        response = await openai_client.images.generate(
+            model="gpt-image-1",
+            prompt=prompt,
+            size="1536x1024",
+            quality="medium",
+            n=1,
         )
+        img_data = response.data[0]
+        if img_data.b64_json:
+            image_bytes = base64.b64decode(img_data.b64_json)
+        else:
+            image_bytes = req_lib.get(img_data.url, timeout=60).content
+        file_key = str(uuid.uuid4())
+        save_path = UPLOADS_DIR / f"{file_key}.png"
+        save_path.write_bytes(image_bytes)
+        image_url = f"{BACKEND_URL}/api/static/uploads/{file_key}.png"
     else:
-        # Fallback sans références
-        prompt = (
-            f"Editorial illustration, 16:9 landscape format, scrapbook collage style, "
-            f"modern premium editorial, expressive, no text, no letters: {proposition}. "
-            "High quality magazine editorial, textured collage."
-        )
-        handler = await fal_client.submit_async(
-            FLUX_MODEL,
-            arguments={
-                "prompt": prompt,
-                "image_size": {"width": 1792, "height": 1024},
-                "num_inference_steps": 28,
-                "guidance_scale": 3.5,
-                "num_images": 1,
-            }
-        )
+        # FAL.ai — comportement actuel
+        illus_ref_files = ["illus1.png", "illus2.png", "illus3.png"]
+        illus_ref_urls = [
+            f"{BACKEND_URL}/api/static/references/illustrations/{f}"
+            for f in illus_ref_files
+            if (ILLUS_REFS_DIR / f).exists()
+        ]
 
-    result = await handler.get()
-    image_url = result["images"][0]["url"]
+        if illus_ref_urls:
+            ref_tags = " ".join(f"@image{i+1}" for i in range(len(illus_ref_urls)))
+            prompt = (
+                f"Generate a new editorial illustration in the exact same visual style as {ref_tags}: "
+                f"{proposition}. "
+                "Same scrapbook collage style, same textures, same composition quality, "
+                "16:9 landscape format, no readable text."
+            )
+            handler = await fal_client.submit_async(
+                "fal-ai/flux-2/edit",
+                arguments={
+                    "prompt": prompt,
+                    "image_urls": illus_ref_urls,
+                    "image_size": {"width": 1792, "height": 1024},
+                    "num_inference_steps": 28,
+                    "guidance_scale": 2.5,
+                    "num_images": 1,
+                    "output_format": "png",
+                }
+            )
+        else:
+            prompt = (
+                f"Editorial illustration, 16:9 landscape format, scrapbook collage style, "
+                f"modern premium editorial, expressive, no text, no letters: {proposition}. "
+                "High quality magazine editorial, textured collage."
+            )
+            handler = await fal_client.submit_async(
+                FLUX_MODEL,
+                arguments={
+                    "prompt": prompt,
+                    "image_size": {"width": 1792, "height": 1024},
+                    "num_inference_steps": 28,
+                    "guidance_scale": 3.5,
+                    "num_images": 1,
+                }
+            )
+        result = await handler.get()
+        image_url = result["images"][0]["url"]
 
     return {"image_url": image_url, "nom_fichier": nom_fichier}
 
