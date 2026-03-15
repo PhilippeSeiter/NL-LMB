@@ -1,6 +1,7 @@
 from fastapi import FastAPI, APIRouter, UploadFile, File, HTTPException
 from fastapi.responses import StreamingResponse
 from fastapi.concurrency import run_in_threadpool
+from fastapi.staticfiles import StaticFiles
 from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
@@ -25,6 +26,7 @@ load_dotenv(ROOT_DIR / '.env')
 OPENAI_API_KEY = os.environ.get('OPENAI_API_KEY', '')
 FAL_KEY = os.environ.get('FAL_KEY', '')
 FLUX_MODEL = os.environ.get('FLUX_MODEL', 'fal-ai/flux/dev')
+BACKEND_URL = os.environ.get('BACKEND_URL', '')
 
 os.environ["FAL_KEY"] = FAL_KEY
 
@@ -32,7 +34,11 @@ mongo_url = os.environ['MONGO_URL']
 db_client = AsyncIOMotorClient(mongo_url)
 db = db_client[os.environ['DB_NAME']]
 
+REFS_DIR = ROOT_DIR / "static" / "references"
+REFS_DIR.mkdir(parents=True, exist_ok=True)
+
 app = FastAPI()
+app.mount("/api/static", StaticFiles(directory=str(ROOT_DIR / "static")), name="static")
 api_router = APIRouter(prefix="/api")
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -240,22 +246,54 @@ async def generate_picto(data: dict):
     article_str = str(article_index).zfill(2)
     nom_fichier = f"Picto_{picto_number}_Article{article_str}_LMB_{date_str}.png"
 
-    prompt = (
-        f"3D glossy premium icon on pure white background, square 1:1 format, no text, no letters, "
-        f"highly detailed, photorealistic 3D render, premium emoji-style: {proposition}. "
-        "Clean white background, professional."
-    )
+    # Références de style locales (si disponibles)
+    ref_files = ["picto3.png", "picto5.png", "picto6.png"]
+    ref_urls = [
+        f"{BACKEND_URL}/api/static/references/{f}"
+        for f in ref_files
+        if (REFS_DIR / f).exists()
+    ]
 
-    handler = await fal_client.submit_async(
-        FLUX_MODEL,
-        arguments={
-            "prompt": prompt,
-            "image_size": "square_hd",
-            "num_inference_steps": 28,
-            "guidance_scale": 3.5,
-            "num_images": 1,
-        }
-    )
+    if ref_urls:
+        # fal-ai/flux-2/edit avec image_urls de référence de style
+        ref_tags = " ".join(f"@image{i+1}" for i in range(len(ref_urls)))
+        prompt = (
+            f"Generate a new premium 3D icon in the exact same visual style as {ref_tags}: "
+            f"{proposition}. "
+            "Same glossy 3D render, same soft studio lighting, same vivid colors, same premium quality. "
+            "Square format, centered object, no text, no letters."
+        )
+        handler = await fal_client.submit_async(
+            "fal-ai/flux-2/edit",
+            arguments={
+                "prompt": prompt,
+                "image_urls": ref_urls,
+                "image_size": "square_hd",
+                "num_inference_steps": 28,
+                "guidance_scale": 2.5,
+                "num_images": 1,
+                "output_format": "png",
+            }
+        )
+    else:
+        # Fallback sans références (pictos pas encore uploadés)
+        prompt = (
+            f"A single premium 3D rendered icon, centered, square composition, "
+            f"pure white background, glossy 3D object, soft studio lighting, "
+            f"vivid colors, no text, no letters: {proposition}. "
+            "Photorealistic quality, smooth surfaces, professional icon design."
+        )
+        handler = await fal_client.submit_async(
+            FLUX_MODEL,
+            arguments={
+                "prompt": prompt,
+                "image_size": "square_hd",
+                "num_inference_steps": 28,
+                "guidance_scale": 3.5,
+                "num_images": 1,
+            }
+        )
+
     result = await handler.get()
     image_url = result["images"][0]["url"]
 
