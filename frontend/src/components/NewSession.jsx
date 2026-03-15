@@ -1,5 +1,6 @@
 import { useEffect, useState, useCallback } from "react";
 import { useParams, useNavigate, useLocation } from "react-router-dom";
+import { toast } from "sonner";
 import axios from "axios";
 import { Loader2, ArrowLeft } from "lucide-react";
 import StepImport from "@/components/StepImport";
@@ -75,7 +76,8 @@ export default function NewSession() {
       if (sess.engine) setEngine(sess.engine);
       restoreStep(sess);
     } catch (e) {
-      console.error("Erreur chargement session", e);
+      toast.error("Impossible de charger la session.");
+      navigate("/");
     } finally {
       setLoading(false);
     }
@@ -123,6 +125,7 @@ export default function NewSession() {
       i === articleIndex ? { ...art, picto, illustration } : art
     );
     const savedSession = await saveSession({ articles: updatedArticles });
+    toast.success("Article validé.");
 
     if (articleIndex + 1 < session.articles.length) {
       setCurrentArticleIndex(articleIndex + 1);
@@ -131,6 +134,10 @@ export default function NewSession() {
       setCurrentStep(3);
     }
   }, [session, saveSession]);
+
+  const handleArticlePrevious = useCallback(() => {
+    setCurrentArticleIndex(i => Math.max(0, i - 1));
+  }, []);
 
   if (loading) {
     return (
@@ -150,6 +157,14 @@ export default function NewSession() {
         {session && (
           <span className="text-sm text-gray-400 ml-1 truncate max-w-xs">— {session.titre}</span>
         )}
+        <span
+          className={`text-xs font-semibold px-2 py-0.5 rounded-full ml-1 ${
+            engine === "openai" ? "bg-purple-100 text-[#3B1FA8]" : "bg-blue-100 text-[#3B9FE8]"
+          }`}
+          data-testid="engine-badge"
+        >
+          {engine === "openai" ? "⭐ Qualité" : "⚡ Rapide"}
+        </span>
         <button
           onClick={() => navigate("/")}
           className="ml-auto text-gray-400 hover:text-gray-600 flex items-center gap-1 text-sm"
@@ -181,6 +196,7 @@ export default function NewSession() {
               totalArticles={session.articles.length}
               engine={engine}
               onComplete={handleArticleComplete}
+              onPrevious={handleArticlePrevious}
             />
           </div>
         )}
