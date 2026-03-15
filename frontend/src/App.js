@@ -1,5 +1,6 @@
 import "@/App.css";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
+import { Toaster } from "sonner";
 import HomePage from "@/components/HomePage";
 import SessionList from "@/components/SessionList";
 import NewSession from "@/components/NewSession";
@@ -15,6 +16,7 @@ function App() {
           <Route path="/session/:sessionId" element={<NewSession />} />
         </Routes>
       </BrowserRouter>
+      <Toaster position="bottom-right" richColors />
     </div>
   );
 }
