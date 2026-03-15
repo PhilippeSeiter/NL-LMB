@@ -107,6 +107,20 @@ SYSTEM_ILLUSTRATIONS = (
     "Zéro texte lisible dans l'image. Tu termines par : \"Tu choisis quel numéro ?\""
 )
 
+AUTO_SELECT_PICTOS = (
+    "Tu es un directeur artistique pour Les Maîtres Bâtisseurs. "
+    "On te donne une liste numérotée de 10 idées de pictogrammes 3D. "
+    "Choisis les 2 numéros qui illustrent le mieux le titre de l'article. "
+    "Réponds UNIQUEMENT avec 2 chiffres séparés par une virgule, ex : 3,7"
+)
+
+AUTO_SELECT_ILLUS = (
+    "Tu es un directeur artistique pour Les Maîtres Bâtisseurs. "
+    "On te donne une liste numérotée de 4 idées d'illustrations éditoriales. "
+    "Choisis le numéro qui illustre le mieux le titre de l'article. "
+    "Réponds UNIQUEMENT avec 1 chiffre, ex : 2"
+)
+
 
 def parse_numbered_list(text: str, max_items: int = 10) -> List[str]:
     lines = text.strip().split('\n')
@@ -224,6 +238,7 @@ async def ocr_image(file: UploadFile = File(...)):
 @api_router.post("/propositions/pictos")
 async def get_picto_propositions(data: dict):
     titre = data.get("titre", "")
+    auto = data.get("auto_select", False)
     chat = LlmChat(
         api_key=OPENAI_API_KEY,
         session_id=f"pictos-{uuid.uuid4()}",
@@ -232,12 +247,29 @@ async def get_picto_propositions(data: dict):
 
     response = await chat.send_message(UserMessage(text=f"Titre de l'article : {titre}"))
     propositions = parse_numbered_list(response, max_items=10)
-    return {"propositions": propositions, "raw": response}
+
+    auto_selections = []
+    if auto and propositions:
+        sel_chat = LlmChat(
+            api_key=OPENAI_API_KEY,
+            session_id=f"auto-pictos-{uuid.uuid4()}",
+            system_message=AUTO_SELECT_PICTOS
+        ).with_model("openai", "gpt-4o-mini")
+        sel_resp = await sel_chat.send_message(UserMessage(
+            text=f"Titre : {titre}\n\n" + "\n".join(f"{i+1}. {p}" for i, p in enumerate(propositions))
+        ))
+        nums = re.findall(r'\d+', sel_resp)
+        auto_selections = [int(n) for n in nums[:2] if 1 <= int(n) <= len(propositions)]
+        if len(auto_selections) < 2 and len(propositions) >= 2:
+            auto_selections = [1, 2]
+
+    return {"propositions": propositions, "raw": response, "auto_selections": auto_selections}
 
 
 @api_router.post("/propositions/illustrations")
 async def get_illustration_propositions(data: dict):
     titre = data.get("titre", "")
+    auto = data.get("auto_select", False)
     chat = LlmChat(
         api_key=OPENAI_API_KEY,
         session_id=f"illus-{uuid.uuid4()}",
@@ -246,7 +278,21 @@ async def get_illustration_propositions(data: dict):
 
     response = await chat.send_message(UserMessage(text=f"Titre de l'article : {titre}"))
     propositions = parse_numbered_list(response, max_items=4)
-    return {"propositions": propositions, "raw": response}
+
+    auto_selection = -1
+    if auto and propositions:
+        sel_chat = LlmChat(
+            api_key=OPENAI_API_KEY,
+            session_id=f"auto-illus-{uuid.uuid4()}",
+            system_message=AUTO_SELECT_ILLUS
+        ).with_model("openai", "gpt-4o-mini")
+        sel_resp = await sel_chat.send_message(UserMessage(
+            text=f"Titre : {titre}\n\n" + "\n".join(f"{i+1}. {p}" for i, p in enumerate(propositions))
+        ))
+        nums = re.findall(r'\d+', sel_resp)
+        auto_selection = int(nums[0]) if nums and 1 <= int(nums[0]) <= len(propositions) else 1
+
+    return {"propositions": propositions, "raw": response, "auto_selection": auto_selection}
 
 
 # --- Image Generation ---
