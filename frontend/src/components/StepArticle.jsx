@@ -68,7 +68,7 @@ function ChangePanel({ propositions, onSelect, loading, onClose }) {
   );
 }
 
-export default function StepArticle({ session, article, articleIndex, totalArticles, onComplete }) {
+export default function StepArticle({ session, article, articleIndex, totalArticles, engine, onComplete }) {
   const hasStarted = useRef(false);
 
   const [genStep, setGenStep] = useState(0);
@@ -129,12 +129,14 @@ export default function StepArticle({ session, article, articleIndex, totalArtic
           article_index: article.index,
           picto_number: 1,
           session_id: session.id,
+          engine,
         }),
         axios.post(`${API}/generate/picto`, {
           proposition: props[sels[1] - 1],
           article_index: article.index,
           picto_number: 2,
           session_id: session.id,
+          engine,
         }),
       ]);
       setPicto1({ url: r1.data.image_url, nom: r1.data.nom_fichier, sel: sels[0] });
@@ -156,6 +158,7 @@ export default function StepArticle({ session, article, articleIndex, totalArtic
         proposition: iProps[iSel - 1],
         article_index: article.index,
         session_id: session.id,
+        engine,
       });
       setIllus({ url: ir.data.image_url, nom: ir.data.nom_fichier, sel: iSel });
 
@@ -176,6 +179,7 @@ export default function StepArticle({ session, article, articleIndex, totalArtic
           article_index: article.index,
           picto_number: 1,
           session_id: session.id,
+          engine,
         });
         setPicto1({ url: r.data.image_url, nom: r.data.nom_fichier, sel: propNum });
       } else if (target === "picto2") {
@@ -184,6 +188,7 @@ export default function StepArticle({ session, article, articleIndex, totalArtic
           article_index: article.index,
           picto_number: 2,
           session_id: session.id,
+          engine,
         });
         setPicto2({ url: r.data.image_url, nom: r.data.nom_fichier, sel: propNum });
       } else if (target === "illus") {
@@ -191,6 +196,7 @@ export default function StepArticle({ session, article, articleIndex, totalArtic
           proposition: propText,
           article_index: article.index,
           session_id: session.id,
+          engine,
         });
         setIllus({ url: r.data.image_url, nom: r.data.nom_fichier, sel: propNum });
       }

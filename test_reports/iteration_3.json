@@ -1,0 +1,44 @@
+{
+  "summary": "Complete testing of engine selection feature (iteration 3). All 13 backend tests and all frontend flows passed. Tested: session engine storage (fal/openai/default), FAL.ai regression, OpenAI gpt-image-1 real API calls for both picto (1024x1024) and illustration (1536x1024), engine modal UI, and navigation flow.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {
+        "screen": "HomePage engine modal",
+        "issues": ["Minor: Missing aria-describedby on Shadcn DialogContent — console warning only, no user impact"]
+      }
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_engine_feature.py",
+    "/app/test_reports/pytest/pytest_engine_results.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "Code is clean and correct. Engine field defaults to 'fal' in both Session model and SessionCreate model — backward compatible with old sessions.",
+    "OpenAI branch: correctly uses AsyncOpenAI client, saves PNG to UPLOADS_DIR, returns /api/static/uploads/uuid.png via BACKEND_URL — verified accessible.",
+    "Picto size=1024x1024, quality=medium for openai — verified correct in server.py line 326.",
+    "Illustration size=1536x1024, quality=medium for openai — verified correct in server.py line 411.",
+    "NewSession.jsx correctly reads engine from location.state?.engine (new session) OR from sess.engine (existing session loaded from DB) at lines 61 and 75.",
+    "StepArticle.jsx: engine prop passed in all 5 generate calls (lines 131, 138, 157, 182, 188, 197) — fully correct.",
+    "No _id exposed in any MongoDB response — projection {_id: 0} used consistently."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_engine_feature.py"
+  ],
+  "success_rate": {
+    "backend": "100% (13/13 tests) — 6 session engine field tests + 3 FAL regression + 4 OpenAI gpt-image-1",
+    "frontend": "100% — modal open, fal default selection, openai selection, cancel, confirm navigation (both engines)"
+  },
+  "test_credentials": "OPENAI_API_KEY and FAL_KEY in backend/.env — all real API calls made, images generated",
+  "seed_data_creation": "3 test sessions created and auto-cleaned by pytest fixtures (TEST_Engine_FAL_Session, TEST_Engine_OpenAI_Session, TEST_Engine_Default_Session). Generated images saved to backend/static/uploads/ (not cleaned).",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Engine feature fully tested and working. OpenAI gpt-image-1 returns base64-encoded PNG saved to UPLOADS_DIR and served via /api/static/uploads/uuid.png. FAL.ai returns CDN URLs (fal.media). Session engine field defaults to 'fal'. Frontend modal: data-testid=engine-modal, engine-option-fal (blue), engine-option-openai (purple), engine-modal-cancel, engine-modal-confirm. Generated OpenAI images verified PNG header (\\x89PNG\\r\\n\\x1a\\n) and size >1MB for illustration.",
+  "rca_of_issues": "No issues found. All engine feature endpoints and UI flows functional."
+}
