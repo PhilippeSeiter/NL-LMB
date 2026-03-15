@@ -1,7 +1,8 @@
 import { useState, useEffect, useRef } from "react";
+import { toast } from "sonner";
 import axios from "axios";
 import { Button } from "@/components/ui/button";
-import { Loader2, RefreshCw, CheckCircle2, ChevronDown, ChevronUp } from "lucide-react";
+import { Loader2, RefreshCw, CheckCircle2, ChevronDown, ChevronUp, ArrowLeft } from "lucide-react";
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 
@@ -68,7 +69,7 @@ function ChangePanel({ propositions, onSelect, loading, onClose }) {
   );
 }
 
-export default function StepArticle({ session, article, articleIndex, totalArticles, engine, onComplete }) {
+export default function StepArticle({ session, article, articleIndex, totalArticles, engine, onComplete, onPrevious }) {
   const hasStarted = useRef(false);
 
   const [genStep, setGenStep] = useState(0);
@@ -202,7 +203,7 @@ export default function StepArticle({ session, article, articleIndex, totalArtic
       }
       setChanging(null);
     } catch {
-      // keep panel open on error
+      toast.error("Génération échouée. Réessayez.");
     } finally {
       setRegenLoading(false);
     }
@@ -361,7 +362,16 @@ export default function StepArticle({ session, article, articleIndex, totalArtic
           </div>
 
           {/* Valider */}
-          <div className="flex justify-end pt-2">
+          <div className="flex items-center justify-between pt-2">
+            <Button
+              onClick={onPrevious}
+              disabled={articleIndex === 0 || submitting}
+              variant="ghost"
+              className="text-gray-400 hover:text-gray-600 -ml-2"
+              data-testid="btn-prev-article"
+            >
+              <ArrowLeft className="w-4 h-4 mr-1" /> Article précédent
+            </Button>
             <Button
               onClick={handleValidate}
               disabled={submitting}
