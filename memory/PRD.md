@@ -71,7 +71,8 @@ POST   /api/propositions/pictos   → 10 propositions (+ auto_select=true → 2 
 POST   /api/propositions/illustrations → 4 propositions (+ auto_select=true → 1 sélection GPT)
 POST   /api/generate/picto        → engine=fal: flux-2/edit + refs | engine=openai: gpt-image-1 1024x1024 medium
 POST   /api/generate/illustration → engine=fal: flux-2/edit + refs 1792x1024 | engine=openai: gpt-image-1 1536x1024 medium
-GET    /api/sessions/{id}/export  → Export ZIP (originaux + pictos + illustrations)
+GET    /api/sessions/{id}/export       → Export ZIP (originaux + pictos + illustrations)
+GET    /api/sessions/{id}/export-word  → Export Word .docx (couverture + une page par article)
 GET    /api/static/...            → Fichiers statiques (refs style + uploads)
 ```
 
