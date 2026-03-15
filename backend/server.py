@@ -182,7 +182,9 @@ async def get_session(session_id: str):
 @api_router.put("/sessions/{session_id}")
 async def update_session(session_id: str, updates: dict):
     updates.pop("_id", None)
-    await db.sessions.update_one({"id": session_id}, {"$set": updates})
+    result = await db.sessions.update_one({"id": session_id}, {"$set": updates})
+    if result.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Session non trouvée")
     updated = await db.sessions.find_one({"id": session_id}, {"_id": 0})
     return updated
 

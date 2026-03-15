@@ -9,7 +9,7 @@ import { CheckCircle2, Download, FileText, Image, Pencil, XCircle } from "lucide
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 
-export default function SessionRecap({ session }) {
+export default function SessionRecap({ session, onRename }) {
   const [titre, setTitre] = useState(session.titre);
   const [editing, setEditing] = useState(false);
   const [titleDraft, setTitleDraft] = useState("");
@@ -35,6 +35,7 @@ export default function SessionRecap({ session }) {
     try {
       await axios.put(`${API}/sessions/${session.id}`, { titre: newTitre });
       setTitre(newTitre);
+      if (onRename) onRename(newTitre);
       toast.success("Session renommée.");
     } catch {
       toast.error("Impossible de renommer la session.");

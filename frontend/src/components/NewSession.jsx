@@ -203,7 +203,10 @@ export default function NewSession() {
 
         {currentStep === 3 && session && (
           <div className="fade-in">
-            <SessionRecap session={session} />
+            <SessionRecap
+              session={session}
+              onRename={(newTitre) => setSession(s => ({ ...s, titre: newTitre }))}
+            />
           </div>
         )}
       </main>
