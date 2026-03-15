@@ -29,6 +29,13 @@ FAL_KEY = os.environ.get('FAL_KEY', '')
 FLUX_MODEL = os.environ.get('FLUX_MODEL', 'fal-ai/flux/dev')
 BACKEND_URL = os.environ.get('BACKEND_URL', '')
 
+LOGO_CDN_URL = "https://customer-assets.emergentagent.com/job_lmb-illustrations/artifacts/xiaswxau_avatar%20logo%20artyplanet%20d.png"
+
+MOIS_FR = [
+    "janvier", "février", "mars", "avril", "mai", "juin",
+    "juillet", "août", "septembre", "octobre", "novembre", "décembre"
+]
+
 os.environ["FAL_KEY"] = FAL_KEY
 openai_client = AsyncOpenAI(api_key=OPENAI_API_KEY)
 
@@ -530,6 +537,136 @@ async def export_session_zip(session_id: str):
         iter([zip_buffer.getvalue()]),
         media_type="application/zip",
         headers={"Content-Disposition": f"attachment; filename={titre_safe}.zip"}
+    )
+
+
+# --- Export Word ---
+
+@api_router.get("/sessions/{session_id}/export-word")
+async def export_session_word(session_id: str):
+    session = await db.sessions.find_one({"id": session_id}, {"_id": 0})
+    if not session:
+        raise HTTPException(status_code=404, detail="Session non trouvée")
+
+    word_buffer = io.BytesIO()
+
+    def build_word():
+        from docx import Document
+        from docx.shared import Cm, Pt, RGBColor
+        from docx.enum.text import WD_ALIGN_PARAGRAPH
+        from docx.oxml.ns import qn
+        from docx.oxml import OxmlElement
+
+        doc = Document()
+
+        # Marges A4
+        section = doc.sections[0]
+        section.left_margin = Cm(2.5)
+        section.right_margin = Cm(2.5)
+        section.top_margin = Cm(2.5)
+        section.bottom_margin = Cm(2.5)
+
+        # --- Page de couverture ---
+        try:
+            logo_resp = req_lib.get(LOGO_CDN_URL, timeout=30)
+            if logo_resp.status_code == 200:
+                p_logo = doc.add_paragraph()
+                p_logo.alignment = WD_ALIGN_PARAGRAPH.CENTER
+                p_logo.add_run().add_picture(io.BytesIO(logo_resp.content), width=Cm(4))
+        except Exception as e:
+            logger.warning(f"Logo non chargé: {e}")
+
+        doc.add_paragraph()  # espace
+
+        p_title = doc.add_paragraph()
+        p_title.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        r_title = p_title.add_run("Visuels Newsletter LMB")
+        r_title.bold = True
+        r_title.font.size = Pt(28)
+        r_title.font.color.rgb = RGBColor(0x3B, 0x1F, 0xA8)
+
+        now = datetime.now()
+        date_fr = f"{now.day} {MOIS_FR[now.month - 1]} {now.year}"
+        p_date = doc.add_paragraph()
+        p_date.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        r_date = p_date.add_run(date_fr)
+        r_date.font.size = Pt(12)
+        r_date.font.color.rgb = RGBColor(0x6B, 0x72, 0x80)
+
+        doc.add_page_break()
+
+        # --- Une page par article ---
+        articles = session.get("articles", [])
+        for i, article in enumerate(articles):
+
+            # Titre H2
+            p_heading = doc.add_heading(article.get("titre", ""), level=2)
+            p_heading.alignment = WD_ALIGN_PARAGRAPH.LEFT
+            doc.add_paragraph()  # espace
+
+            # Pictos côte à côte (table 2 colonnes sans bordure)
+            picto_images = [u for u in article.get("picto", {}).get("images", []) if u]
+            if picto_images:
+                table = doc.add_table(rows=1, cols=2)
+
+                # Supprimer les bordures de la table
+                tbl = table._tbl
+                tbl_pr = tbl.find(qn('w:tblPr'))
+                if tbl_pr is None:
+                    tbl_pr = OxmlElement('w:tblPr')
+                    tbl.insert(0, tbl_pr)
+                tbl_borders = OxmlElement('w:tblBorders')
+                for border_name in ['top', 'left', 'bottom', 'right', 'insideH', 'insideV']:
+                    border = OxmlElement(f'w:{border_name}')
+                    border.set(qn('w:val'), 'none')
+                    tbl_borders.append(border)
+                tbl_pr.append(tbl_borders)
+
+                for j, img_url in enumerate(picto_images[:2]):
+                    cell = table.cell(0, j)
+                    cell_para = cell.paragraphs[0]
+                    cell_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
+                    try:
+                        resp = req_lib.get(img_url, timeout=30)
+                        if resp.status_code == 200:
+                            cell_para.add_run().add_picture(
+                                io.BytesIO(resp.content), width=Cm(6), height=Cm(6)
+                            )
+                    except Exception as e:
+                        logger.error(f"Picto {j+1} non chargé {img_url}: {e}")
+                        cell_para.add_run(f"[Picto {j+1} indisponible]")
+
+                doc.add_paragraph()  # espace après table
+
+            # Illustration pleine largeur
+            illus_url = article.get("illustration", {}).get("image", "")
+            if illus_url:
+                p_illus = doc.add_paragraph()
+                p_illus.alignment = WD_ALIGN_PARAGRAPH.CENTER
+                try:
+                    resp = req_lib.get(illus_url, timeout=60)
+                    if resp.status_code == 200:
+                        p_illus.add_run().add_picture(
+                            io.BytesIO(resp.content), width=Cm(16)
+                        )
+                except Exception as e:
+                    logger.error(f"Illustration non chargée {illus_url}: {e}")
+                    p_illus.add_run("[Illustration indisponible]")
+
+            # Saut de page (sauf dernier article)
+            if i < len(articles) - 1:
+                doc.add_page_break()
+
+        doc.save(word_buffer)
+
+    await run_in_threadpool(build_word)
+    word_buffer.seek(0)
+
+    titre_safe = re.sub(r'[^\w\-]', '_', session.get("titre", "session"))[:40]
+    return StreamingResponse(
+        iter([word_buffer.getvalue()]),
+        media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        headers={"Content-Disposition": f"attachment; filename={titre_safe}.docx"},
     )
 
 
