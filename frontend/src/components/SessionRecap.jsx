@@ -1,16 +1,44 @@
+import { useState } from "react";
+import { toast } from "sonner";
 import axios from "axios";
 import { Button } from "@/components/ui/button";
-import { Download, FileText, Image } from "lucide-react";
+import {
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
+} from "@/components/ui/dialog";
+import { CheckCircle2, Download, FileText, Image, Pencil, XCircle } from "lucide-react";
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 
 export default function SessionRecap({ session }) {
+  const [titre, setTitre] = useState(session.titre);
+  const [editing, setEditing] = useState(false);
+  const [titleDraft, setTitleDraft] = useState("");
+  const [wordModalOpen, setWordModalOpen] = useState(false);
+
   const handleExport = () => {
     window.location.href = `${API}/sessions/${session.id}/export`;
+    toast.info("Téléchargement ZIP démarré.");
   };
 
-  const handleExportWord = () => {
+  const handleExportWord = () => setWordModalOpen(true);
+
+  const confirmExportWord = () => {
+    setWordModalOpen(false);
     window.location.href = `${API}/sessions/${session.id}/export-word`;
+    toast.info("Téléchargement Word démarré.");
+  };
+
+  const handleRenameConfirm = async () => {
+    const newTitre = titleDraft.trim();
+    setEditing(false);
+    if (!newTitre || newTitre === titre) return;
+    try {
+      await axios.put(`${API}/sessions/${session.id}`, { titre: newTitre });
+      setTitre(newTitre);
+      toast.success("Session renommée.");
+    } catch {
+      toast.error("Impossible de renommer la session.");
+    }
   };
 
   const pictoCount = session.articles.reduce(
@@ -19,6 +47,7 @@ export default function SessionRecap({ session }) {
   const illusCount = session.articles.filter(a => a.illustration?.image).length;
 
   return (
+    <>
     <div className="space-y-6 fade-in">
       {/* Header */}
       <div className="flex items-start justify-between">
@@ -26,7 +55,28 @@ export default function SessionRecap({ session }) {
           <h2 className="text-xl font-bold text-[#0F172A]" style={{ fontFamily: 'Manrope, sans-serif' }}>
             Récapitulatif de session
           </h2>
-          <p className="text-sm text-gray-400 mt-0.5">{session.titre}</p>
+          {editing ? (
+            <input
+              autoFocus
+              value={titleDraft}
+              onChange={e => setTitleDraft(e.target.value)}
+              onBlur={handleRenameConfirm}
+              onKeyDown={e => { if (e.key === "Enter") handleRenameConfirm(); if (e.key === "Escape") setEditing(false); }}
+              className="text-sm text-[#3B9FE8] bg-transparent border-b border-[#3B9FE8] outline-none mt-0.5 w-72"
+              data-testid="session-title-input"
+            />
+          ) : (
+            <div className="flex items-center gap-1.5 group mt-0.5">
+              <p className="text-sm text-gray-400">{titre}</p>
+              <button
+                onClick={() => { setTitleDraft(titre); setEditing(true); }}
+                className="opacity-0 group-hover:opacity-100 text-gray-300 hover:text-[#3B9FE8] transition-opacity"
+                data-testid="btn-rename-session"
+              >
+                <Pencil className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          )}
         </div>
         <div className="flex gap-4 text-right">
           <div>
@@ -139,6 +189,73 @@ export default function SessionRecap({ session }) {
         </Button>
       </div>
     </div>
+
+    {/* Modale aperçu Word */}
+    <Dialog open={wordModalOpen} onOpenChange={setWordModalOpen}>
+      <DialogContent className="sm:max-w-md" data-testid="word-preview-modal">
+        <DialogHeader>
+          <DialogTitle className="text-base font-bold" style={{ fontFamily: 'Manrope, sans-serif' }}>
+            Aperçu avant export Word
+          </DialogTitle>
+          <p className="text-xs text-gray-400 mt-1">
+            {session.articles.length} article(s) — vérifiez que tous les visuels sont présents.
+          </p>
+        </DialogHeader>
+
+        <div className="space-y-1 py-1 max-h-72 overflow-y-auto">
+          {session.articles.map((art, i) => {
+            const hasPictos = (art.picto?.images?.filter(Boolean).length || 0) >= 2;
+            const hasIllus = !!art.illustration?.image;
+            return (
+              <div
+                key={i}
+                className="flex items-center justify-between py-2 border-b border-gray-100 last:border-b-0"
+                data-testid={`word-preview-article-${i}`}
+              >
+                <span className="text-sm text-gray-700 truncate mr-3 font-medium" style={{ fontFamily: 'Manrope, sans-serif' }}>
+                  {String(art.index || i + 1).padStart(2, "0")}. {art.titre}
+                </span>
+                <div className="flex items-center gap-2 flex-shrink-0">
+                  <span className={`flex items-center gap-0.5 text-xs px-1.5 py-0.5 rounded font-medium ${
+                    hasPictos ? "bg-green-50 text-green-600" : "bg-red-50 text-red-400"
+                  }`}>
+                    {hasPictos
+                      ? <CheckCircle2 className="w-3 h-3" />
+                      : <XCircle className="w-3 h-3" />
+                    }
+                    Pictos
+                  </span>
+                  <span className={`flex items-center gap-0.5 text-xs px-1.5 py-0.5 rounded font-medium ${
+                    hasIllus ? "bg-green-50 text-green-600" : "bg-red-50 text-red-400"
+                  }`}>
+                    {hasIllus
+                      ? <CheckCircle2 className="w-3 h-3" />
+                      : <XCircle className="w-3 h-3" />
+                    }
+                    Illus.
+                  </span>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+
+        <DialogFooter className="mt-2">
+          <Button variant="ghost" onClick={() => setWordModalOpen(false)} className="text-gray-400"
+            data-testid="word-preview-cancel">
+            Annuler
+          </Button>
+          <Button
+            onClick={confirmExportWord}
+            className="bg-[#3B1FA8] hover:bg-purple-800 text-white"
+            data-testid="word-preview-confirm"
+          >
+            <FileText className="w-4 h-4 mr-1.5" /> Confirmer l'export
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+    </>
   );
 }
 
