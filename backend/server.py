@@ -420,10 +420,6 @@ async def generate_illustration(data: dict):
     image_url = result["images"][0]["url"]
 
     return {"image_url": image_url, "nom_fichier": nom_fichier}
-    result = await handler.get()
-    image_url = result["images"][0]["url"]
-
-    return {"image_url": image_url, "nom_fichier": nom_fichier}
 
 
 # --- Export ZIP ---
