@@ -13,8 +13,17 @@ Outil interne Artyplanet pour générer pictos 3D et illustrations éditoriales 
 ## Workflow V2 (actuel — validé)
 
 ```
-Import → Articles → Récapitulatif
+HomePage → Modale choix moteur → Import → Articles → Récapitulatif
 ```
+
+### Moteurs de génération disponibles
+
+| Option | Label | Modèle | Tailles |
+|---|---|---|---|
+| `fal` (défaut) | ⚡ Rapide | fal-ai/flux-2/edit + refs style | Picto 1024×1024, Illus 1792×1024 |
+| `openai` | ⭐ Qualité | gpt-image-1 (quality=medium) | Picto 1024×1024, Illus 1536×1024 |
+
+Le choix est stocké dans la session MongoDB (`engine` field) et transmis à tous les appels de génération.
 
 ### Étape 1 — Import (`StepImport.jsx`)
 - Upload multiple d'images (JPG, PNG, WEBP)
@@ -60,8 +69,8 @@ DELETE /api/sessions/{id}         → Supprimer session
 POST   /api/ocr                   → OCR image → titre + file_key (sauvegarde originale)
 POST   /api/propositions/pictos   → 10 propositions (+ auto_select=true → 2 sélections GPT)
 POST   /api/propositions/illustrations → 4 propositions (+ auto_select=true → 1 sélection GPT)
-POST   /api/generate/picto        → Génère picto (flux-2/edit avec refs style, 1024×1024)
-POST   /api/generate/illustration → Génère illustration (flux-2/edit avec refs style, 1792×1024)
+POST   /api/generate/picto        → engine=fal: flux-2/edit + refs | engine=openai: gpt-image-1 1024x1024 medium
+POST   /api/generate/illustration → engine=fal: flux-2/edit + refs 1792x1024 | engine=openai: gpt-image-1 1536x1024 medium
 GET    /api/sessions/{id}/export  → Export ZIP (originaux + pictos + illustrations)
 GET    /api/static/...            → Fichiers statiques (refs style + uploads)
 ```
