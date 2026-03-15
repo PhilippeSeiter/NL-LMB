@@ -1,9 +1,10 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { toast } from "sonner";
 import axios from "axios";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { ArrowLeft, FolderOpen, Trash2, Loader2, Plus } from "lucide-react";
+import { ArrowLeft, FolderOpen, Pencil, Trash2, Loader2, Plus } from "lucide-react";
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 const LOGO_URL = "https://customer-assets.emergentagent.com/job_lmb-illustrations/artifacts/xiaswxau_avatar%20logo%20artyplanet%20d.png";
@@ -12,6 +13,8 @@ export default function SessionList() {
   const navigate = useNavigate();
   const [sessions, setSessions] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [editingId, setEditingId] = useState(null);
+  const [titleDraft, setTitleDraft] = useState("");
 
   useEffect(() => {
     loadSessions();
@@ -31,8 +34,37 @@ export default function SessionList() {
   const deleteSession = async (id, e) => {
     e.stopPropagation();
     if (!window.confirm("Supprimer cette session ?")) return;
-    await axios.delete(`${API}/sessions/${id}`);
-    setSessions(sessions.filter(s => s.id !== id));
+    try {
+      await axios.delete(`${API}/sessions/${id}`);
+      setSessions(sessions.filter(s => s.id !== id));
+      toast.success("Session supprimée.");
+    } catch {
+      toast.error("Impossible de supprimer la session.");
+    }
+  };
+
+  const handleRenameStart = (id, titre, e) => {
+    e.stopPropagation();
+    setEditingId(id);
+    setTitleDraft(titre);
+  };
+
+  const handleRenameConfirm = async (id) => {
+    const newTitre = titleDraft.trim();
+    setEditingId(null);
+    if (!newTitre || newTitre === sessions.find(s => s.id === id)?.titre) return;
+    try {
+      await axios.put(`${API}/sessions/${id}`, { titre: newTitre });
+      setSessions(sessions.map(s => s.id === id ? { ...s, titre: newTitre } : s));
+      toast.success("Session renommée.");
+    } catch {
+      toast.error("Impossible de renommer la session.");
+    }
+  };
+
+  const handleRenameKeyDown = (e, id) => {
+    if (e.key === "Enter") { e.preventDefault(); handleRenameConfirm(id); }
+    if (e.key === "Escape") { e.stopPropagation(); setEditingId(null); }
   };
 
   const formatDate = (iso) => {
@@ -95,9 +127,32 @@ export default function SessionList() {
                 data-testid={`session-item-${session.id}`}
               >
                 <div className="flex-1 min-w-0">
-                  <p className="font-semibold text-[#0F172A] truncate" style={{ fontFamily: 'Manrope, sans-serif' }}>
-                    {session.titre}
-                  </p>
+                  {editingId === session.id ? (
+                    <input
+                      autoFocus
+                      value={titleDraft}
+                      onChange={e => setTitleDraft(e.target.value)}
+                      onBlur={() => handleRenameConfirm(session.id)}
+                      onKeyDown={e => handleRenameKeyDown(e, session.id)}
+                      onClick={e => e.stopPropagation()}
+                      className="font-semibold text-[#0F172A] bg-transparent border-b border-[#3B9FE8] outline-none w-full"
+                      style={{ fontFamily: 'Manrope, sans-serif' }}
+                      data-testid={`session-title-input-${session.id}`}
+                    />
+                  ) : (
+                    <div className="flex items-center gap-1.5 group">
+                      <p className="font-semibold text-[#0F172A] truncate" style={{ fontFamily: 'Manrope, sans-serif' }}>
+                        {session.titre}
+                      </p>
+                      <button
+                        onClick={e => handleRenameStart(session.id, session.titre, e)}
+                        className="opacity-0 group-hover:opacity-100 text-gray-300 hover:text-[#3B9FE8] transition-opacity flex-shrink-0"
+                        data-testid={`btn-rename-${session.id}`}
+                      >
+                        <Pencil className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  )}
                   <p className="text-sm text-gray-400 mt-0.5">
                     {formatDate(session.date_creation)} — {session.articles?.length || 0} article(s)
                   </p>
