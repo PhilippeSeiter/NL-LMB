@@ -3,21 +3,19 @@ import { useParams, useNavigate } from "react-router-dom";
 import axios from "axios";
 import { Loader2, ArrowLeft } from "lucide-react";
 import StepImport from "@/components/StepImport";
-import StepPictos from "@/components/StepPictos";
-import StepIllustrations from "@/components/StepIllustrations";
-import SessionSummary from "@/components/SessionSummary";
+import StepArticle from "@/components/StepArticle";
+import SessionRecap from "@/components/SessionRecap";
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 const LOGO_URL = "https://customer-assets.emergentagent.com/job_lmb-illustrations/artifacts/xiaswxau_avatar%20logo%20artyplanet%20d.png";
 
 const STEPS = [
   { id: 1, label: "Import" },
-  { id: 2, label: "Pictos" },
-  { id: 3, label: "Illustrations" },
-  { id: 4, label: "Export" },
+  { id: 2, label: "Articles" },
+  { id: 3, label: "Récap" },
 ];
 
-function Stepper({ currentStep }) {
+function Stepper({ currentStep, totalArticles, currentArticleIndex }) {
   return (
     <div className="flex items-center justify-center gap-0 mb-8" data-testid="stepper">
       {STEPS.map((step, i) => (
@@ -37,7 +35,9 @@ function Stepper({ currentStep }) {
               }`}
               style={{ fontFamily: 'Manrope, sans-serif' }}
             >
-              {step.label}
+              {step.id === 2 && currentStep === 2 && totalArticles > 0
+                ? `Article ${currentArticleIndex + 1}/${totalArticles}`
+                : step.label}
             </span>
           </div>
           {i < STEPS.length - 1 && (
@@ -62,9 +62,7 @@ export default function NewSession() {
   const [loading, setLoading] = useState(!!sessionId);
 
   useEffect(() => {
-    if (sessionId) {
-      loadSession(sessionId);
-    }
+    if (sessionId) loadSession(sessionId);
   }, [sessionId]);
 
   const loadSession = async (id) => {
@@ -82,21 +80,13 @@ export default function NewSession() {
 
   const restoreStep = (sess) => {
     const articles = sess.articles || [];
-    if (articles.length === 0) {
-      setCurrentStep(1);
-      return;
-    }
-    const allPictos = articles.every(a => a.picto?.valide);
-    const allIllus = articles.every(a => a.illustration?.valide);
+    if (!articles.length) { setCurrentStep(1); return; }
 
-    if (allIllus) {
-      setCurrentStep(4);
-    } else if (allPictos) {
-      const idx = articles.findIndex(a => !a.illustration?.valide);
+    const allDone = articles.every(a => a.picto?.valide && a.illustration?.valide);
+    if (allDone) {
       setCurrentStep(3);
-      setCurrentArticleIndex(idx >= 0 ? idx : 0);
     } else {
-      const idx = articles.findIndex(a => !a.picto?.valide);
+      const idx = articles.findIndex(a => !a.picto?.valide || !a.illustration?.valide);
       setCurrentStep(2);
       setCurrentArticleIndex(idx >= 0 ? idx : 0);
     }
@@ -125,31 +115,17 @@ export default function NewSession() {
     setCurrentArticleIndex(0);
   };
 
-  const handlePictoComplete = useCallback(async (articleIndex, pictoState) => {
+  const handleArticleComplete = useCallback(async (articleIndex, { picto, illustration }) => {
     const updatedArticles = session.articles.map((art, i) =>
-      i === articleIndex ? { ...art, picto: { ...pictoState, valide: true } } : art
+      i === articleIndex ? { ...art, picto, illustration } : art
     );
-    await saveSession({ articles: updatedArticles });
-
-    if (articleIndex + 1 < session.articles.length) {
-      setCurrentArticleIndex(articleIndex + 1);
-    } else {
-      setCurrentStep(3);
-      setCurrentArticleIndex(0);
-    }
-  }, [session, saveSession]);
-
-  const handleIllustrationComplete = useCallback(async (articleIndex, illustrationState) => {
-    const updatedArticles = session.articles.map((art, i) =>
-      i === articleIndex ? { ...art, illustration: { ...illustrationState, valide: true } } : art
-    );
-    await saveSession({ articles: updatedArticles });
+    const savedSession = await saveSession({ articles: updatedArticles });
 
     if (articleIndex + 1 < session.articles.length) {
       setCurrentArticleIndex(articleIndex + 1);
     } else {
       await saveSession({ statut: "terminee" });
-      setCurrentStep(4);
+      setCurrentStep(3);
     }
   }, [session, saveSession]);
 
@@ -181,7 +157,11 @@ export default function NewSession() {
       </header>
 
       <main className="max-w-3xl mx-auto px-6 py-8">
-        <Stepper currentStep={currentStep} />
+        <Stepper
+          currentStep={currentStep}
+          totalArticles={session?.articles?.length || 0}
+          currentArticleIndex={currentArticleIndex}
+        />
 
         {currentStep === 1 && (
           <div className="fade-in">
@@ -190,32 +170,20 @@ export default function NewSession() {
         )}
 
         {currentStep === 2 && session && (
-          <div className="fade-in" key={`picto-${currentArticleIndex}`}>
-            <StepPictos
+          <div className="fade-in" key={`article-${currentArticleIndex}`}>
+            <StepArticle
               session={session}
               article={session.articles[currentArticleIndex]}
               articleIndex={currentArticleIndex}
               totalArticles={session.articles.length}
-              onComplete={handlePictoComplete}
+              onComplete={handleArticleComplete}
             />
           </div>
         )}
 
         {currentStep === 3 && session && (
-          <div className="fade-in" key={`illus-${currentArticleIndex}`}>
-            <StepIllustrations
-              session={session}
-              article={session.articles[currentArticleIndex]}
-              articleIndex={currentArticleIndex}
-              totalArticles={session.articles.length}
-              onComplete={handleIllustrationComplete}
-            />
-          </div>
-        )}
-
-        {currentStep === 4 && session && (
           <div className="fade-in">
-            <SessionSummary session={session} />
+            <SessionRecap session={session} />
           </div>
         )}
       </main>
