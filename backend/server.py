@@ -37,6 +37,9 @@ db = db_client[os.environ['DB_NAME']]
 REFS_DIR = ROOT_DIR / "static" / "references"
 REFS_DIR.mkdir(parents=True, exist_ok=True)
 
+UPLOADS_DIR = ROOT_DIR / "static" / "uploads"
+UPLOADS_DIR.mkdir(parents=True, exist_ok=True)
+
 app = FastAPI()
 app.mount("/api/static", StaticFiles(directory=str(ROOT_DIR / "static")), name="static")
 api_router = APIRouter(prefix="/api")
@@ -66,6 +69,7 @@ class IllustrationState(BaseModel):
 class Article(BaseModel):
     index: int
     titre: str
+    original_file_key: str = ""
     picto: PictoState = Field(default_factory=PictoState)
     illustration: IllustrationState = Field(default_factory=IllustrationState)
 
@@ -131,6 +135,7 @@ async def create_session(data: SessionCreate):
         art = Article(
             index=a.get("index", 1),
             titre=a.get("titre", ""),
+            original_file_key=a.get("original_file_key", ""),
         )
         articles.append(art)
     session = Session(titre=data.titre, articles=articles)
@@ -166,6 +171,7 @@ async def delete_session(session_id: str):
 @api_router.post("/ocr")
 async def ocr_image(file: UploadFile = File(...)):
     content = await file.read()
+    original_content = content  # conserver l'original avant resize
 
     try:
         from PIL import Image as PILImage
@@ -201,7 +207,14 @@ async def ocr_image(file: UploadFile = File(...)):
     )
 
     titre = await chat.send_message(user_message)
-    return {"titre": titre.strip()}
+
+    # Sauvegarde de l'image originale
+    file_key = str(uuid.uuid4())
+    save_path = UPLOADS_DIR / f"{file_key}.png"
+    with open(save_path, "wb") as f:
+        f.write(original_content)
+
+    return {"titre": titre.strip(), "file_key": file_key}
 
 
 # --- Propositions ---
@@ -343,7 +356,19 @@ async def export_session_zip(session_id: str):
 
     def build_zip():
         with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zf:
+            date_str = datetime.now().strftime("%Y%m%d")
             for article in session.get("articles", []):
+                art_str = str(article.get("index", 0)).zfill(2)
+
+                # Image originale uploadée
+                file_key = article.get("original_file_key", "")
+                if file_key:
+                    orig_path = UPLOADS_DIR / f"{file_key}.png"
+                    if orig_path.exists():
+                        nom_orig = f"Article{art_str}_LMB_{date_str}.png"
+                        zf.writestr(nom_orig, orig_path.read_bytes())
+
+                # Pictos générés
                 picto = article.get("picto", {})
                 for img_url, nom in zip(picto.get("images", []), picto.get("nom_fichiers", [])):
                     if img_url:
@@ -354,6 +379,7 @@ async def export_session_zip(session_id: str):
                         except Exception as e:
                             logger.error(f"Download error {img_url}: {e}")
 
+                # Illustration générée
                 illus = article.get("illustration", {})
                 img_url = illus.get("image", "")
                 nom = illus.get("nom_fichier", "")

@@ -109,11 +109,12 @@ export default function NewSession() {
     return resp.data;
   }, [session?.id]);
 
-  const handleStepImportComplete = async (articleTitles) => {
+  const handleStepImportComplete = async (articleItems) => {
     const titre = `Session LMB — ${new Date().toLocaleDateString('fr-FR')}`;
-    const articles = articleTitles.map((t, i) => ({
+    const articles = articleItems.map((item, i) => ({
       index: i + 1,
-      titre: t,
+      titre: typeof item === "string" ? item : item.titre,
+      original_file_key: typeof item === "string" ? "" : (item.original_file_key || ""),
     }));
 
     const resp = await axios.post(`${API}/sessions`, { titre, articles });

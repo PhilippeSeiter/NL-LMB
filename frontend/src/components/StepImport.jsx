@@ -67,7 +67,7 @@ export default function StepImport({ onComplete }) {
         });
 
         setFiles(prev => prev.map((f, idx) =>
-          idx === i ? { ...f, status: "done", titre: resp.data.titre } : f
+          idx === i ? { ...f, status: "done", titre: resp.data.titre, file_key: resp.data.file_key || "" } : f
         ));
       } catch (e) {
         setFiles(prev => prev.map((f, idx) =>
@@ -83,7 +83,7 @@ export default function StepImport({ onComplete }) {
     if (valid.length === 0) return;
     setSubmitting(true);
     try {
-      await onComplete(valid.map(f => f.titre.trim()));
+      await onComplete(valid.map(f => ({ titre: f.titre.trim(), original_file_key: f.file_key || "" })));
     } finally {
       setSubmitting(false);
     }
