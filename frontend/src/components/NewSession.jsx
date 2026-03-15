@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback } from "react";
-import { useParams, useNavigate } from "react-router-dom";
+import { useParams, useNavigate, useLocation } from "react-router-dom";
 import axios from "axios";
 import { Loader2, ArrowLeft } from "lucide-react";
 import StepImport from "@/components/StepImport";
@@ -56,7 +56,9 @@ function Stepper({ currentStep, totalArticles, currentArticleIndex }) {
 export default function NewSession() {
   const { sessionId } = useParams();
   const navigate = useNavigate();
+  const location = useLocation();
   const [session, setSession] = useState(null);
+  const [engine, setEngine] = useState(location.state?.engine || "fal");
   const [currentStep, setCurrentStep] = useState(1);
   const [currentArticleIndex, setCurrentArticleIndex] = useState(0);
   const [loading, setLoading] = useState(!!sessionId);
@@ -70,6 +72,7 @@ export default function NewSession() {
       const resp = await axios.get(`${API}/sessions/${id}`);
       const sess = resp.data;
       setSession(sess);
+      if (sess.engine) setEngine(sess.engine);
       restoreStep(sess);
     } catch (e) {
       console.error("Erreur chargement session", e);
@@ -107,7 +110,7 @@ export default function NewSession() {
       original_file_key: typeof item === "string" ? "" : (item.original_file_key || ""),
     }));
 
-    const resp = await axios.post(`${API}/sessions`, { titre, articles });
+    const resp = await axios.post(`${API}/sessions`, { titre, articles, engine });
     const newSession = resp.data;
     setSession(newSession);
     navigate(`/session/${newSession.id}`, { replace: true });
@@ -176,6 +179,7 @@ export default function NewSession() {
               article={session.articles[currentArticleIndex]}
               articleIndex={currentArticleIndex}
               totalArticles={session.articles.length}
+              engine={engine}
               onComplete={handleArticleComplete}
             />
           </div>
